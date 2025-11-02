@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://crop-cure-chat-backend.onrender.com"
+      "destination": "https://crop-cure-chat-backend.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
