@@ -16,6 +16,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [otpStep, setOtpStep] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [minimalMode, setMinimalMode] = useState(false);
   const navigate = useNavigate();
   const { t } = useLanguage();
 
@@ -128,12 +129,14 @@ const Login = () => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">{t('login.password')}</Label>
-                  <Link
-                    to="/forgot-password"
-                    className="text-sm text-primary hover:text-primary/80 transition-colors"
-                  >
-                    {t('login.forgotPassword')}
-                  </Link>
+                  {!minimalMode && (
+                    <Link
+                      to="/forgot-password"
+                      className="text-sm text-primary hover:text-primary/80 transition-colors"
+                    >
+                      {t('login.forgotPassword')}
+                    </Link>
+                  )}
                 </div>
                 <div className="relative">
                   <Input
@@ -196,6 +199,7 @@ const Login = () => {
                 )}
               </Button>
               
+              {!minimalMode && (
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <Separator className="w-full" />
@@ -206,8 +210,16 @@ const Login = () => {
                   </span>
                 </div>
               </div>
+              )}
 
-              <Button variant="outline" className="w-full" type="button" disabled={isLoading}>
+              {!minimalMode && (
+              <Button
+                variant="outline"
+                className="w-full"
+                type="button"
+                disabled={isLoading}
+                onClick={() => setMinimalMode(true)}
+              >
                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                   <path
                     fill="currentColor"
@@ -228,6 +240,7 @@ const Login = () => {
                 </svg>
                 {t('login.signInWithGoogle')}
               </Button>
+              )}
 
               <p className="text-center text-sm text-muted-foreground">
                 {t('login.dontHaveAccount')}{" "}

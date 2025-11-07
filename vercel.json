@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://render.com/docs/web-services#port-binding//api/$1"
+      "destination": "https://your-render-backend.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",

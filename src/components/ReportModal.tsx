@@ -111,6 +111,40 @@ export default function ReportModal({
 
   const COLORS = ["#22c55e", "#10b981", "#84cc16", "#06b6d4", "#a78bfa"]; // Tailwind greens and accents
 
+  // Domain-specific narratives for livestock and fish
+  const livestockNarrative = useMemo(() => {
+    if (!classification) return "";
+    const name = classification.diseaseName || "a condition";
+    const breed = classification.breed ? ` in ${classification.breed}` : "";
+    const conf = typeof classification.confidence === "number" ? `${classification.confidence}%` : undefined;
+    const parts: string[] = [];
+    parts.push(`This livestock analysis suggests signs of ${name}${breed}.`);
+    if (conf) parts.push(`Confidence: ${conf}.`);
+    parts.push(
+      "Recommended first steps: isolate affected animals, monitor temperature, appetite, and hydration, maintain clean housing and good ventilation, and consult a veterinarian for a definitive diagnosis and treatment."
+    );
+    parts.push(
+      "Supportive care may include balanced feed, clean water, and reducing stress. If respiratory signs are present, reduce dust exposure and check for drafts."
+    );
+    return parts.join(" ");
+  }, [classification]);
+
+  const fishNarrative = useMemo(() => {
+    if (!classification) return "";
+    const name = classification.diseaseName || "a condition";
+    const conf = typeof classification.confidence === "number" ? `${classification.confidence}%` : undefined;
+    const parts: string[] = [];
+    parts.push(`This fish analysis indicates possible ${name}.`);
+    if (conf) parts.push(`Confidence: ${conf}.`);
+    parts.push(
+      "Check water quality (ammonia, nitrite, nitrate), temperature, and oxygenation. Perform a partial water change, ensure proper filtration, and quarantine affected fish if possible."
+    );
+    parts.push(
+      "Consider appropriate treatments (e.g., salt baths where suitable) and seek aquatic veterinary guidance for a precise diagnosis and protocol."
+    );
+    return parts.join(" ");
+  }, [classification]);
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[90vw] w-[90vw] h-[90vh] p-0 overflow-hidden bg-background flex flex-col">
@@ -177,6 +211,12 @@ export default function ReportModal({
                       Confidence: <span className={confidenceColor(classification.confidence)}>{classification.confidence}%</span>
                     </p>
                   )}
+                  {livestockNarrative && (
+                    <div className="mt-3">
+                      <p className="font-medium">Summary</p>
+                      <p className="text-sm text-muted-foreground">{livestockNarrative}</p>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -187,6 +227,12 @@ export default function ReportModal({
                     <p>
                       Confidence: <span className={confidenceColor(classification.confidence)}>{classification.confidence}%</span>
                     </p>
+                  )}
+                  {fishNarrative && (
+                    <div className="mt-3">
+                      <p className="font-medium">Summary</p>
+                      <p className="text-sm text-muted-foreground">{fishNarrative}</p>
+                    </div>
                   )}
                 </>
               )}

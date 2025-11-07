@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import ReportModal from "@/components/ReportModal";
 
 interface HistoryItem {
   id: string;
@@ -44,13 +45,13 @@ const Profile = () => {
   const { t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const [profileData, setProfileData] = useState({
-    name: localStorage.getItem("userName") || "John Farmer",
-    email: "john.farmer@example.com",
-    phone: "+1 (555) 123-4567",
-    location: "Iowa, United States",
-    bio: "Organic farmer with 15+ years of experience. Passionate about sustainable agriculture and crop health management.",
-    farmSize: "250 acres",
-    primaryCrops: "Corn, Soybeans, Wheat",
+    name: localStorage.getItem("userName") || "",
+    email: "",
+    phone: "",
+    location: "",
+    bio: "",
+    farmSize: "",
+    primaryCrops: "",
   });
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -62,10 +63,55 @@ const Profile = () => {
   });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [reportMessage, setReportMessage] = useState<{
+    id: string;
+    type: 'user' | 'ai';
+    content: string;
+    timestamp: Date;
+    classification?: {
+      diseaseDetected?: boolean;
+      diseaseName?: string;
+      confidence?: number;
+      severity?: string;
+      affectedArea?: number;
+      recommendations?: string[];
+    };
+    domain?: 'plant' | 'livestock' | 'fish';
+  } | null>(null);
+  const [reportImageUrl, setReportImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("authToken");
     if (!token) return;
+
+    const fetchUserProfile = async () => {
+      try {
+        const resp = await fetch('/api/user/profile', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.success && json.data?.user) {
+            const u = json.data.user;
+            // Map backend fields to local UI fields
+            setProfileData({
+              name: u.username || localStorage.getItem('userName') || '',
+              email: u.email || '',
+              phone: u.phone || '',
+              location: (u.farmDetails?.location) || '',
+              bio: u.bio || '',
+              farmSize: (u.farmDetails?.farmSize) || '',
+              primaryCrops: Array.isArray(u.farmDetails?.primaryCrops)
+                ? u.farmDetails.primaryCrops.join(', ')
+                : '',
+            });
+          }
+        }
+      } catch (_) {
+        // Ignore profile fetch errors for now
+      }
+    };
 
     const fetchStatsAndHistory = async () => {
       try {
@@ -144,7 +190,8 @@ const Profile = () => {
       }
     };
 
-    fetchStatsAndHistory();
+    // Load profile first, then stats
+    fetchUserProfile().finally(fetchStatsAndHistory);
   }, []);
 
   const refreshStats = async () => {
@@ -165,6 +212,28 @@ const Profile = () => {
           }));
         }
       }
+
+      // Fallback: derive stats from history if API stats are unavailable or seem stale
+      const historyResp = await fetch('/api/upload/history?limit=100', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (historyResp.ok) {
+        const historyJson = await historyResp.json();
+        if (historyJson.success && Array.isArray(historyJson.data?.uploads)) {
+          const uploads = historyJson.data.uploads;
+          const completed = uploads.filter((u: any) => u.processingStatus === 'completed');
+          const healthy = completed.filter((u: any) => u.analysisResult && u.analysisResult.diseaseDetected === false).length;
+          const diseased = completed.filter((u: any) => u.analysisResult && u.analysisResult.diseaseDetected === true).length;
+          const total = uploads.length;
+
+          setStats(prev => ({
+            ...prev,
+            totalAnalyses: prev.totalAnalyses || total,
+            healthyDetections: prev.healthyDetections || healthy,
+            diseaseDetections: prev.diseaseDetections || diseased,
+          }));
+        }
+      }
     } catch {
       // ignore
     }
@@ -177,14 +246,66 @@ const Profile = () => {
     }));
   };
 
-  const handleSaveProfile = () => {
-    // Mock save - replace with actual API call
-    localStorage.setItem("userName", profileData.name);
-    setIsEditing(false);
-    toast({
-      title: t('toast.profileUpdated'),
-      description: t('toast.profileUpdatedDesc'),
-    });
+  const handleSaveProfile = async () => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      toast({ title: t('toast.authRequired') || 'Authentication Required', description: t('toast.checkCredentials') || 'Please log in', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const primaryCropsArray = profileData.primaryCrops
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const resp = await fetch('/api/user/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          username: profileData.name,
+          email: profileData.email,
+          bio: profileData.bio,
+          phone: profileData.phone,
+          farmDetails: {
+            farmSize: profileData.farmSize,
+            location: profileData.location,
+            primaryCrops: primaryCropsArray,
+          },
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.success) {
+        throw new Error(json?.message || 'Failed to update profile');
+      }
+
+      const u = json.data?.user;
+      // Update local state and localStorage for navbar display
+      if (u?.username) localStorage.setItem('userName', u.username);
+      setProfileData(prev => ({
+        ...prev,
+        name: u?.username ?? prev.name,
+        email: u?.email ?? prev.email,
+        bio: u?.bio ?? prev.bio,
+        phone: u?.phone ?? prev.phone,
+        farmSize: u?.farmDetails?.farmSize ?? prev.farmSize,
+        location: u?.farmDetails?.location ?? prev.location,
+        primaryCrops: Array.isArray(u?.farmDetails?.primaryCrops)
+          ? u!.farmDetails!.primaryCrops!.join(', ')
+          : prev.primaryCrops,
+      }));
+
+      setIsEditing(false);
+      toast({
+        title: t('toast.profileUpdated'),
+        description: t('toast.profileUpdatedDesc'),
+      });
+    } catch (e) {
+      toast({ title: t('toast.loginFailed') || 'Update failed', description: e instanceof Error ? e.message : 'Please try again', variant: 'destructive' });
+    }
   };
 
   const getStatusColor = (status?: string) => {
@@ -276,6 +397,70 @@ const Profile = () => {
       toast({ title: "Failed to delete", description: e instanceof Error ? e.message : "Please try again", variant: "destructive" });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const viewReport = async (id: string) => {
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      toast({ title: "Login required", description: "Please login to view reports", variant: "destructive" });
+      return;
+    }
+    try {
+      // Fetch upload details for image URL
+      const uploadResp = await fetch(`/api/upload/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!uploadResp.ok) throw new Error('Failed to fetch upload details');
+      const uploadJson = await uploadResp.json();
+      if (!uploadJson.success) throw new Error(uploadJson.message || 'Failed to fetch upload details');
+      const upload = uploadJson.data.upload;
+      const imageUrl: string | null = upload?.fileUrl || null;
+
+      // Fetch classification status and report
+      const statusResp = await fetch(`/api/model/classify/${id}/status`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!statusResp.ok) throw new Error('Failed to fetch classification status');
+      const statusJson = await statusResp.json();
+      if (!statusJson.success) throw new Error(statusJson.message || 'Failed to fetch classification status');
+
+      const data = statusJson.data;
+      if (data.status !== 'completed') {
+        toast({ title: "Analysis not completed", description: `Current status: ${data.status}`, variant: "destructive" });
+        return;
+      }
+
+      const classification = data.classification || undefined;
+      const narrative = data.report || '';
+
+      // Derive domain (fallback to plant)
+      let domain: 'plant' | 'livestock' | 'fish' | undefined = 'plant';
+      // Basic heuristic: if recommendations absent and breed present then livestock; else if tags include fish
+      try {
+        if (classification && typeof classification === 'object' && 'breed' in classification) {
+          domain = 'livestock';
+        } else if (Array.isArray(upload?.tags) && upload.tags.includes('fish')) {
+          domain = 'fish';
+        }
+      } catch (e) {
+        // Silently ignore domain detection errors; fallback remains 'plant'
+      }
+
+      setReportImageUrl(imageUrl);
+      setReportMessage({
+        id,
+        type: 'ai',
+        content: narrative || '',
+        timestamp: new Date(data.updatedAt || Date.now()),
+        classification,
+        domain
+      });
+      // Ensure stats reflect the completed analysis
+      await refreshStats();
+      setIsReportOpen(true);
+    } catch (e) {
+      toast({ title: "Failed to open report", description: e instanceof Error ? e.message : "Please try again", variant: "destructive" });
     }
   };
 
@@ -556,6 +741,14 @@ const Profile = () => {
                                 >
                                   Delete
                                 </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="ml-2"
+                                  onClick={() => viewReport(item.id)}
+                                >
+                                  View Report
+                                </Button>
                               </div>
                             </div>
                             <p className="text-sm text-muted-foreground mb-2">
@@ -576,6 +769,12 @@ const Profile = () => {
           </Tabs>
         </div>
       </div>
+      <ReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        message={reportMessage}
+        imageUrl={reportImageUrl}
+      />
     </div>
   );
 };

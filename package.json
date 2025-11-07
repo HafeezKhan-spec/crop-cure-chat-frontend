@@ -10,9 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "dev:front": "vite",
-    "dev:back": "npm run dev --prefix server",
-    "dev:model": "cmd /c ..\\model\\start.bat",
+    "dev:back": "powershell -Command \"$env:PORT=5000; npm run dev --prefix ..\\..\\crop-cure-chat-backend\"",
+    "dev:model": "cmd /c ..\\..\\model\\start.bat",
     "dev:full": "concurrently -n front,back,model -c green,blue,magenta \"npm run dev:front\" \"npm run dev:back\" \"npm run dev:model\"",
+    "dev:all": "npm run dev:full",
     "deploy:check": "echo 'Checking deployment readiness...' && npm run build && echo 'Frontend build successful!'",
     "deploy:setup": "echo 'Setting up deployment files...' && echo 'Please follow DEPLOYMENT.md for complete setup instructions'"
   },

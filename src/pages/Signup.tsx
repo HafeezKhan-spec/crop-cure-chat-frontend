@@ -21,6 +21,8 @@ const Signup = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
   const navigate = useNavigate();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,52 +73,67 @@ const Signup = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    // If we're on OTP step, verify the code
+    if (otpStep) {
+      if (!otpCode || otpCode.length !== 6) {
+        toast({ title: "Invalid code", description: "Enter the 6-digit code", variant: "destructive" });
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.email, code: otpCode }),
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+          localStorage.setItem('authToken', data.data.token);
+          localStorage.setItem('userName', data.data.user.username);
+          toast({ title: "Signup verified", description: "Welcome to AgriClip!" });
+          navigate('/dashboard');
+        } else {
+          toast({ title: "Verification failed", description: data.message || "Invalid code", variant: 'destructive' });
+        }
+      } catch (err) {
+        console.error('Verify OTP error:', err);
+        toast({ title: "Verification failed", description: "Server error. Try again.", variant: 'destructive' });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Initial signup -> request OTP
     if (!validateForm()) return;
-
     setIsLoading(true);
-
     try {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: formData.username,
           email: formData.email,
           password: formData.password,
-          languagePref: formData.languagePref
+          languagePref: formData.languagePref,
         }),
       });
-
       const data = await response.json();
-
-      if (response.ok && data.success) {
-        // Save auth token and user info
-        localStorage.setItem("authToken", data.data.token);
-        localStorage.setItem("userName", data.data.user.username);
-        
-        toast({
-          title: "Account created successfully!",
-          description: "Welcome to AgriClip! Let's get started.",
-        });
-        
-        navigate("/dashboard");
+      if (response.ok && data.success && data.data?.otpPending) {
+        setOtpStep(true);
+        toast({ title: "Verification required", description: "We sent a code to your email." });
+      } else if (response.ok && data.success && data.data?.token) {
+        // Fallback if backend returns token directly
+        localStorage.setItem('authToken', data.data.token);
+        localStorage.setItem('userName', data.data.user.username);
+        toast({ title: "Account created successfully!", description: "Welcome to AgriClip! Let's get started." });
+        navigate('/dashboard');
       } else {
-        toast({
-          title: "Registration failed",
-          description: data.message || "Please check your information and try again",
-          variant: "destructive",
-        });
+        toast({ title: "Registration failed", description: data.message || "Please check your information and try again", variant: 'destructive' });
       }
     } catch (error) {
       console.error('Signup error:', error);
-      toast({
-        title: "Registration failed",
-        description: "Server error. Please try again later.",
-        variant: "destructive",
-      });
+      toast({ title: "Registration failed", description: "Server error. Please try again later.", variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -162,6 +179,22 @@ const Signup = () => {
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
+              {otpStep && (
+                <div className="space-y-2">
+                  <Label htmlFor="otp">Verification Code</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                    required
+                    className="transition-all focus:ring-2 focus:ring-primary tracking-widest"
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
                 <Input
@@ -176,6 +209,7 @@ const Signup = () => {
                 />
               </div>
 
+              {!otpStep && (
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -189,7 +223,9 @@ const Signup = () => {
                   className="transition-all focus:ring-2 focus:ring-primary"
                 />
               </div>
+              )}
 
+              {!otpStep && (
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
@@ -236,7 +272,9 @@ const Signup = () => {
                   </div>
                 )}
               </div>
+              )}
 
+              {!otpStep && (
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <div className="relative">
@@ -270,7 +308,9 @@ const Signup = () => {
                   )}
                 </div>
               </div>
+              )}
 
+              {!otpStep && (
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="terms"
@@ -288,6 +328,7 @@ const Signup = () => {
                   </Link>
                 </Label>
               </div>
+              )}
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">
               <Button
@@ -298,13 +339,14 @@ const Signup = () => {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating account...
+                    {otpStep ? 'Verifying...' : 'Creating account...'}
                   </>
                 ) : (
-                  "Create Account"
+                  otpStep ? 'Verify Code' : 'Create Account'
                 )}
               </Button>
 
+              {!otpStep && (
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <Separator className="w-full" />
@@ -315,7 +357,9 @@ const Signup = () => {
                   </span>
                 </div>
               </div>
+              )}
 
+              {!otpStep && (
               <Button variant="outline" className="w-full" type="button">
                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                   <path
@@ -337,6 +381,7 @@ const Signup = () => {
                 </svg>
                 Sign up with Google
               </Button>
+              )}
 
               <p className="text-center text-sm text-muted-foreground">
                 Already have an account?{" "}

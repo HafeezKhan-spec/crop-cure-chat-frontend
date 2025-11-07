@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Leaf, ArrowRight, Shield, Zap, Brain, Users } from "lucide-react";
@@ -7,6 +8,48 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 const Index = () => {
   const { t } = useLanguage();
+  const [diseaseCount, setDiseaseCount] = useState<number | null>(null);
+  const [diseaseNames, setDiseaseNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchDiseases = async () => {
+      try {
+        const resp = await fetch('/api/model/diseases');
+        const json = await resp.json();
+        if (json && json.success && json.data) {
+          const arr = Array.isArray(json.data.diseases) ? json.data.diseases : (Array.isArray(json.data) ? json.data : []);
+          const count = typeof json.data.total === 'number' ? json.data.total : (Array.isArray(arr) ? arr.length : null);
+          if (!cancelled) {
+            setDiseaseCount(count);
+            const names = arr.slice(0, 5).map((d: { name?: string } | string) => (typeof d === 'object' && d.name ? d.name : d));
+            setDiseaseNames(names.filter(Boolean));
+          }
+          return;
+        }
+      } catch (_) {
+        // fall through to details
+      }
+
+      try {
+        const detailsResp = await fetch('/api/model/details');
+        const detailsJson = await detailsResp.json();
+        const models = detailsJson?.data?.models || [];
+        const primary = models[0] || {};
+        const supported = Array.isArray(primary.supportedDiseases) ? primary.supportedDiseases : [];
+        if (!cancelled) {
+          setDiseaseCount(supported.length || null);
+          setDiseaseNames(supported.slice(0, 5));
+        }
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    fetchDiseases();
+    return () => { cancelled = true; };
+  }, []);
   
   return (
     <div className="min-h-screen">
@@ -74,8 +117,13 @@ const Index = () => {
               <div className="text-white/80">Detection Accuracy</div>
             </div>
             <div className="glass p-6 rounded-2xl">
-              <div className="text-3xl font-bold text-accent mb-2">50+</div>
+              <div className="text-3xl font-bold text-accent mb-2">{typeof diseaseCount === 'number' ? diseaseCount : '50+'}</div>
               <div className="text-white/80">Crop Diseases</div>
+              {diseaseNames.length > 0 && (
+                <div className="mt-2 text-xs text-white/70">
+                  {diseaseNames.join(' • ')}
+                </div>
+              )}
             </div>
             <div className="glass p-6 rounded-2xl">
               <div className="text-3xl font-bold text-accent mb-2">24/7</div>
@@ -219,7 +267,7 @@ const Index = () => {
                   {t('home.startFreeTrial')}
                 </Link>
               </Button>
-              <Button asChild size="lg" variant="outline" className="border-white/30 text-black hover:bg-white/10 px-8 py-6 text-lg">
+              <Button asChild size="lg" variant="outline" className="bg-white text-black border-0 px-8 py-6 text-lg transition-colors duration-300 hover:bg-black/100 hover:text-green-400">
                 <Link to="/dashboard">
                   {t('home.viewDemo')}
                 </Link>

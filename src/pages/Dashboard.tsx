@@ -61,6 +61,15 @@ interface UploadedFile {
 const Dashboard = () => {
   const { t } = useLanguage();
   
+  // Map confidence percentage to text color classes
+  const confidenceColor = (val?: number) => {
+    if (typeof val !== "number") return "text-muted-foreground";
+    if (val <= 40) return "text-red-600"; // Low
+    if (val <= 70) return "text-orange-500"; // Medium
+    if (val <= 90) return "text-green-500"; // Good
+    return "text-green-700"; // High
+  };
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string>("");
@@ -371,7 +380,11 @@ const Dashboard = () => {
         // Store pending classification info and open domain selection dialog
         setPendingUploadId(uploadData.data.uploadId);
         setPendingSessionId(sessionId || messageData.data.sessionId);
-        setPendingMessageContent(messageContent);
+        // Prefer user's typed symptom description if available; otherwise use the generic message
+        const contextText = (inputMessage && inputMessage.trim().length > 0)
+          ? inputMessage.trim()
+          : messageContent;
+        setPendingMessageContent(contextText);
         setIsDomainDialogOpen(true);
       } else {
         toast({
@@ -454,11 +467,11 @@ const Dashboard = () => {
             // Compose chat content based on domain
             let analysisContent: string;
             if (domain === 'plant') {
-              // Prefer narrative report when available; otherwise a concise summary including plant-specific fields
-              analysisContent = report ? report : [
+              // Show structured fields for plants and append dynamic narrative if provided
+              analysisContent = [
                 `Disease: ${classification.diseaseName}`,
-                `Confidence: ${classification.confidence}%`,
                 classification.severity ? `Severity: ${classification.severity}` : undefined,
+                `Confidence: ${classification.confidence}%`,
                 typeof classification.affectedArea === 'number' ? `Affected Area: ${classification.affectedArea}%` : undefined,
               ].filter(Boolean).join('\n');
             } else {
@@ -475,6 +488,11 @@ const Dashboard = () => {
                 confidence: classification.confidence,
                 // omit severity, affectedArea, recommendations
               } as ClassificationResult;
+            }
+
+            // Append dynamic narrative from model service when available
+            if (report && String(report).trim().length > 0) {
+              analysisContent = `${analysisContent}\n\n${report}`;
             }
 
             const aiResponse: Message = {
@@ -948,7 +966,14 @@ const Dashboard = () => {
                                 </div>
                                 <div className={`grid ${message.domain === 'plant' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
                                   <div>
-                                    <p className="text-xs text-muted-foreground mb-1">Confidence</p>
+                                    <p className="text-xs text-muted-foreground mb-1">
+                                      Confidence
+                                      {typeof message.classification.confidence === 'number' && (
+                                        <span className={`ml-2 font-medium ${confidenceColor(message.classification.confidence)}`}>
+                                          {message.classification.confidence}%
+                                        </span>
+                                      )}
+                                    </p>
                                     <Progress value={message.classification.confidence} />
                                   </div>
                                   {message.domain === 'plant' && typeof message.classification.affectedArea === 'number' && (
